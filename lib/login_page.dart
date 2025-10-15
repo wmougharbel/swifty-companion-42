@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 
 class LoginPage extends StatefulWidget {
@@ -11,6 +12,44 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPage extends State<LoginPage> {
+
+  Future<String?> loginWith42() async {
+    await dotenv.load(fileName: '.env');
+    final app_id = dotenv.env['APP_ID'];
+    final app_secret = dotenv.env['APP_SECRET'];
+    final redirect_uri = 'com.example.flutterapplication://oauth/callback';
+    final authUrl = 'https://api.intra.42.fr/oauth/authorize'
+                    '?client_id=$app_id'
+                    '&redirect_uri=${Uri.encodeComponent(redirect_uri)}'
+                    '&response_type=code';
+    final result = await FlutterWebAuth2.authenticate(url: authUrl, callbackUrlScheme: 'com.example.flutterapplication');
+    final code = Uri.parse(result).queryParameters['code'];
+    if (code == null)
+      return null;
+
+    final token = await http.post(
+      Uri.parse('https://api.intra.42.fr/oauth/token'),
+      body: jsonEncode({
+        'grant_type': 'authorization_code',
+        'client_id': app_id,
+        'client_secret': app_secret,
+        'code': code,
+        'redirect_uri': redirect_uri,
+      })
+    );
+
+    if (token.statusCode != 200) {
+      print("Failed to exchange token. Error code ${token.statusCode}");
+      print(token.body);
+      return null;
+    }
+    else {
+      final data = jsonDecode(token.body) as Map<String, dynamic>;
+      print("Token: ${data['access_token']}");
+      return data['access_token'] as String?;
+    }
+  }
+
   Future<String?> _getAccessToken() async {
     await dotenv.load(fileName: ".env");
     final app_id = dotenv.env['APP_ID'];
@@ -25,6 +64,7 @@ class _LoginPage extends State<LoginPage> {
           'scope': 'public',
         }
     );
+
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final access_token = data['access_token'];
@@ -100,7 +140,7 @@ class _LoginPage extends State<LoginPage> {
                               backgroundColor: Color(0xFF074d5e),
                             ),
                             onPressed: () {
-                              _login();
+                              loginWith42();
                             },
                             child: Text (
                               'Login',
